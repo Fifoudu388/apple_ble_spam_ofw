@@ -1,0 +1,31 @@
+name: Build Flipper App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Clone Flipper firmware
+        run: git clone --depth 1 https://github.com/flipperdevices/flipperzero-firmware.git
+
+      - name: Copy app into firmware
+        run: |
+          mkdir -p flipperzero-firmware/applications_user/my_app
+          cp -r * flipperzero-firmware/applications_user/my_app || true
+
+      - name: Build FAP
+        run: |
+          cd flipperzero-firmware
+          ./fbt fap_my_app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: flipper-fap
+          path: flipperzero-firmware/build/fap/
