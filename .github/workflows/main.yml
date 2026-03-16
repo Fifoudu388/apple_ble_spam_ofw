@@ -2,30 +2,41 @@ name: Build Flipper App
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - name: Checkout App Source
+        uses: actions/checkout@v4
+        with:
+          path: my_app # On clone l'app dans un dossier spécifique
 
-      - name: Clone Flipper firmware
-        run: git clone --depth 1 https://github.com/flipperdevices/flipperzero-firmware.git
+      - name: Checkout Flipper Firmware
+        uses: actions/checkout@v4
+        with:
+          repository: flipperdevices/flipperzero-firmware
+          ref: release # Ou 'main' selon la stabilité voulue
+          path: firmware
+          fetch-depth: 1
 
-      - name: Copy app into firmware
+      - name: Setup & Build FAP
         run: |
-          mkdir -p flipperzero-firmware/applications_user/my_app
-          cp -r * flipperzero-firmware/applications_user/my_app || true
-
-      - name: Build FAP
-        run: |
-          cd flipperzero-firmware
+          # Créer le lien symbolique plutôt que de copier (plus propre)
+          ln -s "$(pwd)/my_app" "$(pwd)/firmware/applications_user/my_app"
+          
+          cd firmware
+          # ./fbt s'occupe d'installer les dépendances (toolchain) automatiquement
           ./fbt fap_my_app
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
+      - name: Upload FAP Artifact
+        uses: actions/actions/upload-artifact@v4
         with:
-          name: flipper-fap
-          path: flipperzero-firmware/build/fap/
+          name: my_app_fap
+          # On cible spécifiquement les fichiers .fap générés
+          path: firmware/build/fap/
+          if-no-files-found: error
