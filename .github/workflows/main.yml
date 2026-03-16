@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  fap-build:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -12,14 +12,23 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build with uFBT
-        uses: flipperdevices/fbt-action@v1
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          app-dir: .
-          sdk-channel: release 
+          python-version: '3.10'
 
+      - name: Install uFBT
+        run: |
+          python -m pip install --upgrade pip
+          pip install ufbt
+
+      - name: Build FAP
+        run: |
+          # uFBT télécharge automatiquement le SDK de la branche 'release'
+          ufbt
+          
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Flipper-App-Build
+          name: fap-binary
           path: dist/*.fap
