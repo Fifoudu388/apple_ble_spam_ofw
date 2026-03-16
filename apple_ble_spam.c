@@ -495,6 +495,42 @@ struct {
     ContinuityData** datas;
 } randoms[ContinuityTypeCount] = {0};
 
+static void randoms_reset(void) {
+    for(ContinuityType type = 0; type < ContinuityTypeCount; type++) {
+        free(randoms[type].datas);
+        randoms[type].datas = NULL;
+        randoms[type].count = 0;
+    }
+}
+
+static bool randoms_build(void) {
+    randoms_reset();
+
+    for(uint8_t payload_i = 0; payload_i < COUNT_OF(payloads); payload_i++) {
+        if(payloads[payload_i].random) continue;
+        randoms[payloads[payload_i].msg.type].count++;
+    }
+
+    for(ContinuityType type = 0; type < ContinuityTypeCount; type++) {
+        if(!randoms[type].count) continue;
+        randoms[type].datas = malloc(sizeof(ContinuityData*) * randoms[type].count);
+        if(!randoms[type].datas) {
+            randoms_reset();
+            return false;
+        }
+
+        uint8_t random_i = 0;
+        for(uint8_t payload_i = 0; payload_i < COUNT_OF(payloads); payload_i++) {
+            if(payloads[payload_i].random) continue;
+            if(payloads[payload_i].msg.type == type) {
+                randoms[type].datas[random_i++] = &payloads[payload_i].msg.data;
+            }
+        }
+    }
+
+    return true;
+}
+
 uint16_t delays[] = {
     20,
     50,
@@ -570,6 +606,7 @@ static void toggle_adv(State* state, Payload* payload) {
     } else {
         state->size = continuity_get_packet_size(payload->msg.type);
         state->packet = malloc(state->size);
+        if(!state->packet) return;
         state->payload = payload;
         furi_hal_random_fill_buf(state->mac, sizeof(state->mac));
         state->resume = furi_hal_bt_is_active();
@@ -762,24 +799,23 @@ static void input_callback(InputEvent* input, void* ctx) {
 
 int32_t apple_ble_spam(void* p) {
     UNUSED(p);
-    for(uint8_t payload_i = 0; payload_i < COUNT_OF(payloads); payload_i++) {
-        if(payloads[payload_i].random) continue;
-        randoms[payloads[payload_i].msg.type].count++;
-    }
-    for(ContinuityType type = 0; type < ContinuityTypeCount; type++) {
-        if(!randoms[type].count) continue;
-        randoms[type].datas = malloc(sizeof(ContinuityData*) * randoms[type].count);
-        uint8_t random_i = 0;
-        for(uint8_t payload_i = 0; payload_i < COUNT_OF(payloads); payload_i++) {
-            if(payloads[payload_i].random) continue;
-            if(payloads[payload_i].msg.type == type) {
-                randoms[type].datas[random_i++] = &payloads[payload_i].msg.data;
-            }
-        }
+    if(!randoms_build()) return -1;
+
+    State* state = calloc(1, sizeof(State));
+    if(!state) {
+        randoms_reset();
+        return -1;
     }
 
-    State* state = malloc(sizeof(State));
+    state->index = PageStart;
+
     state->thread = furi_thread_alloc();
+    if(!state->thread) {
+        randoms_reset();
+        free(state);
+        return -1;
+    }
+
     furi_thread_set_callback(state->thread, adv_thread);
     furi_thread_set_context(state->thread, state);
     furi_thread_set_stack_size(state->thread, 2048);
@@ -850,8 +886,7 @@ int32_t apple_ble_spam(void* p) {
     furi_thread_free(state->thread);
     free(state);
 
-    for(ContinuityType type = 0; type < ContinuityTypeCount; type++) {
-        free(randoms[type].datas);
-    }
+    randoms_reset();
+
     return 0;
 }
